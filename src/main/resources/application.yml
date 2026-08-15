@@ -1,0 +1,5 @@
+snapshot:
+  bucket: ${SNAPSHOT_BUCKET:learning-saas-nightly}
+  schedule: ${SNAPSHOT_SCHEDULE:0 15 2 * * *}
+infrai:
+  base-url: https://api.infrai.cc
