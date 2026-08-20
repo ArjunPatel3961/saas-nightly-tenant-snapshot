@@ -1,10 +1,10 @@
 # Nightly tenant snapshots for a learning SaaS
 
-We made a deliberate choice here: snapshot a tenant only after onboarding completes and the account is still active. The result is a dated JSON object whose name tells an admin what it is, without opening it. Infrai handles the presigned object-storage upload behind a single INFRAI_API_KEY, so this Spring service never pulls in a cloud storage SDK or a second credential. One key, one bill, and a plain REST call from any language.
+We made a small, deliberate call here: snapshot a tenant only once onboarding is done and the account is still active, then write a dated JSON object an admin can recognize without opening it. Infrai gives us the presigned object-storage upload behind one key, so this Spring service needs no cloud SDK or separate storage credential.
 
 ## Run the lesson-shaped workflow
 
-Create the bucket at app startup, start the service, onboard one academy, then trigger the same operation the nightly job runs:
+Create the bucket during app startup, start the service, onboard one academy, then trigger the same op the nightly schedule runs:
 
 ```bash
 export INFRAI_API_KEY=your_key_here
@@ -23,15 +23,15 @@ The input is an `ACTIVE` tenant named `academy-42` with `onboardingComplete: tru
 {"tenantId":"academy-42","outcome":"STORED","objectKey":"tenants/academy-42/2026-08-15.json"}
 ```
 
-The date tracks the current UTC day. `application.yml` runs the same workflow at 02:15 UTC; use the `local` profile when teaching or debugging without the scheduler.
+The date follows the current UTC day. `application.yml` schedules the same workflow for 02:15 UTC; use the `local` profile when teaching or debugging without the scheduler.
 
 ## Read the code in this order
 
-`SnapshotPolicy` holds the business decision, keeping account lifecycle rules away from HTTP and storage concerns. `TenantSnapshotService` owns onboarding state, admin-triggered snapshots, and the nightly sweep. `InfraiStorageClient` checks or creates the configured bucket via `storage.bucket.get` and `storage.bucket.create`, asks for a PUT URL with `storage.object.presign`, then sends the JSON bytes straight to that signed URL.
+`SnapshotPolicy` contains the business decision, which keeps account lifecycle rules independent from HTTP and storage. `TenantSnapshotService` owns onboarding state, admin-triggered snapshots, and the nightly sweep. `InfraiStorageClient` first checks or creates the configured bucket with `storage.bucket.get` and `storage.bucket.create`, requests a PUT URL with `storage.object.presign`, and sends the JSON bytes directly to that signed URL.
 
-Every Infrai request uses an explicit HTTP method and a Bearer credential. The client decodes the `{ok, data, error, metadata}` envelope before sorting out the response, turns a rejected op into a typed error for the controller, and backs off on HTTP 429 while honoring `Retry-After`. The presign call carries a tenant-and-date idempotency key, so retrying one night's write names the same operation.
+Every Infrai request has an explicit HTTP method and Bearer credential. The client decodes the `{ok, data, error, metadata}` envelope before classifying the response, turns a rejected operation into a typed error for the controller, and backs off on HTTP 429 while honoring `Retry-After`. The presign request carries a tenant-and-date idempotency key, so retrying one night's write names the same operation.
 
-A real gotcha is lifecycle eligibility. A suspended tenant can hold perfectly valid course data, but backing it up as if active hides the account decision. That's why the policy is visible and tested instead of buried in the scheduler.
+One real gotcha is lifecycle eligibility. A suspended tenant may still have perfectly valid course data, but backing it up as if active hides the account decision. That is why the policy is visible and tested instead of buried in the scheduler.
 
 ## Verify the decision locally
 
@@ -41,11 +41,11 @@ Run the focused test:
 mvn test
 ```
 
-It feeds three accounts: active and onboarded, suspended and onboarded, then active and incomplete. Expected decisions are `true`, `false`, and `false`, covering the rule that decides whether any object upload happens.
+It supplies three accounts: active and onboarded, suspended and onboarded, then active and incomplete. The expected decisions are `true`, `false`, and `false`, which covers the rule that determines whether any object upload occurs.
 
 ## Configuration boundaries
 
-`SNAPSHOT_BUCKET` picks the bucket made at startup, and `SNAPSHOT_SCHEDULE` swaps the six-field Spring cron expression. `application-local.yml` turns off scheduled execution so `scripts/demo.sh` is the only trigger during a local walkthrough. This sample keeps tenant records in memory to make the lifecycle transition easy to inspect; point `TenantSnapshotService` at your account repository when moving to a persistent service.
+`SNAPSHOT_BUCKET` selects the bucket created during startup, and `SNAPSHOT_SCHEDULE` replaces the six-field Spring cron expression. `application-local.yml` disables scheduled execution so `scripts/demo.sh` is the only trigger during a local walkthrough. This sample keeps tenant records in memory to make the lifecycle transition easy to inspect; connect `TenantSnapshotService` to your account repository when adapting it to a persistent service.
 
 ## License
 
